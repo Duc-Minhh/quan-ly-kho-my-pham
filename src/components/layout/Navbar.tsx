@@ -1,9 +1,11 @@
 import React from 'react';
-import { Menu, Database, RotateCcw } from 'lucide-react';
+import { Menu, Cloud, RotateCcw } from 'lucide-react';
 
 interface NavbarProps {
   onToggleMobileMenu: () => void;
   onResetData: () => void;
+  onOpenCloudSettings: () => void;
+  isCloudConnected: boolean;
   totalProducts: number;
   inStockCount: number;
   lowStockCount: number;
@@ -13,6 +15,8 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({
   onToggleMobileMenu,
   onResetData,
+  onOpenCloudSettings,
+  isCloudConnected,
   totalProducts,
   inStockCount,
   lowStockCount,
@@ -29,12 +33,25 @@ export const Navbar: React.FC<NavbarProps> = ({
           <Menu className="w-5 h-5" />
         </button>
 
-        <div className="flex items-center gap-2 text-xs">
-          <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-            <Database className="w-3.5 h-3.5" />
-            Lưu trữ offline (LocalStorage)
+        {/* Cloud Status Toggle Button */}
+        <button
+          type="button"
+          onClick={onOpenCloudSettings}
+          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-bold transition-all shadow-2xs ${
+            isCloudConnected
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+              : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+          }`}
+          title="Bấm để cấu hình kết nối đồng bộ Real-Time nhiều thiết bị"
+        >
+          <Cloud className={`w-3.5 h-3.5 ${isCloudConnected ? 'text-emerald-600' : 'text-amber-600'}`} />
+          <span className="hidden sm:inline">
+            {isCloudConnected ? 'Đồng bộ Real-Time (Cloud)' : 'Chế độ Offline (Cấu hình Cloud)'}
           </span>
-        </div>
+          <span className="sm:hidden">
+            {isCloudConnected ? 'Cloud Online' : 'Offline'}
+          </span>
+        </button>
       </div>
 
       {/* Quick inventory badges */}

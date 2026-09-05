@@ -6,6 +6,14 @@ import {
   saveProductsToStorage,
   resetProductsToDefault,
 } from './services/storage';
+import {
+  getSupabaseClient,
+  fetchProductsFromCloud,
+  saveProductToCloud,
+  deleteProductFromCloud,
+  bulkDeleteProductsFromCloud,
+  mapRowToProduct,
+} from './services/supabase';
 import { exportProductsToExcel, importProductsFromExcel } from './utils/excel';
 import { Sidebar } from './components/layout/Sidebar';
 import type { NavTab } from './components/layout/Sidebar';
@@ -14,6 +22,7 @@ import { ProductListView } from './components/products/ProductListView';
 import { ProductFormModal } from './components/products/ProductFormModal';
 import { ProductDetailModal } from './components/products/ProductDetailModal';
 import { DeleteConfirmModal } from './components/products/DeleteConfirmModal';
+import { CloudSettingsModal } from './components/common/CloudSettingsModal';
 import { DashboardView } from './components/dashboard/DashboardView';
 import { BrandsView } from './components/brands/BrandsView';
 import { StatsView } from './components/stats/StatsView';
@@ -27,6 +36,12 @@ export function App() {
 
   // Products Data
   const [products, setProducts] = useState<Product[]>(() => loadProductsFromStorage());
+
+  // Cloud Real-Time connection state
+  const [isCloudConnected, setIsCloudConnected] = useState<boolean>(() =>
+    Boolean(getSupabaseClient())
+  );
+  const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
 
   // Search & Filter state
   const [searchTerm, setSearchTerm] = useState('');
@@ -66,6 +81,73 @@ export function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
+  // Subscribe to real-time changes when Supabase is connected
+  useEffect(() => {
+    const client = getSupabaseClient();
+    const connected = Boolean(client);
+    setIsCloudConnected(connected);
+
+    if (!client) return;
+
+    // 1. Initial cloud fetch
+    fetchProductsFromCloud()
+      .then((cloudData) => {
+        if (cloudData && cloudData.length > 0) {
+          setProducts(cloudData);
+          saveProductsToStorage(cloudData);
+        }
+      })
+      .catch((err) => {
+        console.error('Error loading products from cloud:', err);
+      });
+
+    // 2. Real-time websocket channel subscription
+    const channel = client
+      .channel('products-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'products' },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            const newProd = mapRowToProduct(payload.new);
+            setProducts((prev) => {
+              if (prev.some((p) => p.id === newProd.id)) return prev;
+              const next = [newProd, ...prev];
+              saveProductsToStorage(next);
+              return next;
+            });
+            addToast('info', 'Cập nhật từ thiết bị khác', `Sản phẩm "${newProd.name}" vừa được thêm mới.`);
+          } else if (payload.eventType === 'UPDATE') {
+            const updatedProd = mapRowToProduct(payload.new);
+            setProducts((prev) => {
+              const next = prev.map((p) => (p.id === updatedProd.id ? updatedProd : p));
+              saveProductsToStorage(next);
+              return next;
+            });
+            setDetailProduct((current) =>
+              current && current.id === updatedProd.id ? updatedProd : current
+            );
+            addToast('info', 'Đồng bộ Real-Time', `Sản phẩm "${updatedProd.name}" vừa được chỉnh sửa.`);
+          } else if (payload.eventType === 'DELETE') {
+            const deletedId = (payload.old as any).id;
+            if (deletedId) {
+              setProducts((prev) => {
+                const next = prev.filter((p) => p.id !== deletedId);
+                saveProductsToStorage(next);
+                return next;
+              });
+              setSelectedProductIds((prev) => prev.filter((id) => id !== deletedId));
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      client.removeChannel(channel);
+    };
+  }, [isCloudConnected]);
+
   // Keyboard shortcuts: Ctrl+K, Ctrl+N, Esc
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -91,6 +173,7 @@ export function App() {
         setIsFormModalOpen(false);
         setIsDetailModalOpen(false);
         setIsDeleteModalOpen(false);
+        setIsCloudModalOpen(false);
         setIsMobileSidebarOpen(false);
       }
     };
@@ -125,10 +208,8 @@ export function App() {
       visibleIds.length > 0 && visibleIds.every((id) => selectedProductIds.includes(id));
 
     if (isAllVisibleSelected) {
-      // Deselect all visible
       setSelectedProductIds((prev) => prev.filter((id) => !visibleIds.includes(id)));
     } else {
-      // Select all visible
       const merged = Array.from(new Set([...selectedProductIds, ...visibleIds]));
       setSelectedProductIds(merged);
     }
@@ -168,7 +249,7 @@ export function App() {
     setIsDeleteModalOpen(true);
   };
 
-  // Save Add or Edit
+  // Save Add or Edit (Persists to local and syncs to cloud)
   const handleSaveProduct = (
     data: Omit<Product, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }
   ) => {
@@ -176,23 +257,25 @@ export function App() {
 
     if (data.id) {
       // Editing existing product
-      const updated = products.map((p) => {
-        if (p.id === data.id) {
-          return {
-            ...p,
-            ...data,
-            updatedAt: now,
-          };
-        }
-        return p;
-      });
+      const existing = products.find((p) => p.id === data.id);
+      const updatedProd: Product = {
+        ...(existing || (data as any)),
+        ...data,
+        updatedAt: now,
+      };
+
+      const updated = products.map((p) => (p.id === data.id ? updatedProd : p));
       updateProducts(updated);
       addToast('success', 'Đã lưu thay đổi', `Đã cập nhật thông tin sản phẩm "${data.name}".`);
 
-      // Update detail modal if currently viewing this product
       if (detailProduct && detailProduct.id === data.id) {
-        setDetailProduct((prev) => (prev ? { ...prev, ...data, updatedAt: now } : null));
+        setDetailProduct(updatedProd);
       }
+
+      // Sync to cloud in real time
+      saveProductToCloud(updatedProd).catch((err) => {
+        console.error('Error saving to cloud:', err);
+      });
     } else {
       // Adding new product
       const newProd: Product = {
@@ -204,6 +287,11 @@ export function App() {
       const updated = [newProd, ...products];
       updateProducts(updated);
       addToast('success', 'Đã thêm sản phẩm', `Sản phẩm "${newProd.name}" đã được đưa vào kho.`);
+
+      // Sync to cloud in real time
+      saveProductToCloud(newProd).catch((err) => {
+        console.error('Error saving new product to cloud:', err);
+      });
     }
   };
 
@@ -211,6 +299,7 @@ export function App() {
   const handleConfirmDelete = () => {
     if (bulkProductsToDelete.length > 0) {
       const idsToDelete = new Set(bulkProductsToDelete.map((p) => p.id));
+      const idsArray = Array.from(idsToDelete);
       const updated = products.filter((p) => !idsToDelete.has(p.id));
       updateProducts(updated);
       addToast(
@@ -226,18 +315,29 @@ export function App() {
         setIsDetailModalOpen(false);
         setDetailProduct(null);
       }
+
+      // Sync to cloud
+      bulkDeleteProductsFromCloud(idsArray).catch((err) => {
+        console.error('Error bulk deleting from cloud:', err);
+      });
     } else if (productToDelete) {
-      const updated = products.filter((p) => p.id !== productToDelete.id);
+      const id = productToDelete.id;
+      const updated = products.filter((p) => p.id !== id);
       updateProducts(updated);
-      setSelectedProductIds((prev) => prev.filter((id) => id !== productToDelete.id));
+      setSelectedProductIds((prev) => prev.filter((item) => item !== id));
       addToast('warning', 'Đã xóa sản phẩm', `Đã loại bỏ "${productToDelete.name}" khỏi kho.`);
       setIsDeleteModalOpen(false);
       setProductToDelete(null);
 
-      if (detailProduct && detailProduct.id === productToDelete.id) {
+      if (detailProduct && detailProduct.id === id) {
         setIsDetailModalOpen(false);
         setDetailProduct(null);
       }
+
+      // Sync to cloud
+      deleteProductFromCloud(id).catch((err) => {
+        console.error('Error deleting product from cloud:', err);
+      });
     }
   };
 
@@ -258,7 +358,6 @@ export function App() {
   // Export Excel
   const handleExportExcel = () => {
     try {
-      // If user has selected items, give priority to exporting selected items or all
       const exportList =
         selectedProductIds.length > 0
           ? products.filter((p) => selectedProductIds.includes(p.id))
@@ -290,7 +389,6 @@ export function App() {
         return;
       }
 
-      // Merge with existing products
       const updated = [...importedProducts, ...products];
       updateProducts(updated);
       addToast(
@@ -339,6 +437,8 @@ export function App() {
         <Navbar
           onToggleMobileMenu={() => setIsMobileSidebarOpen(true)}
           onResetData={handleResetData}
+          onOpenCloudSettings={() => setIsCloudModalOpen(true)}
+          isCloudConnected={isCloudConnected}
           totalProducts={products.length}
           inStockCount={inStockCount}
           lowStockCount={lowStockCount}
@@ -432,6 +532,16 @@ export function App() {
           setBulkProductsToDelete([]);
         }}
         onConfirm={handleConfirmDelete}
+      />
+
+      {/* Modal: Cấu hình kết nối Cloud Real-Time (Supabase) */}
+      <CloudSettingsModal
+        isOpen={isCloudModalOpen}
+        onClose={() => setIsCloudModalOpen(false)}
+        isCloudConnected={isCloudConnected}
+        onConfigChanged={() => setIsCloudConnected(Boolean(getSupabaseClient()))}
+        products={products}
+        onNotify={addToast}
       />
     </div>
   );
