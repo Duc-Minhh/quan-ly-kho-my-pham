@@ -7,13 +7,13 @@ import {
   resetProductsToDefault,
 } from './services/storage';
 import {
-  getSupabaseClient,
-  fetchProductsFromCloud,
-  saveProductToCloud,
-  deleteProductFromCloud,
-  bulkDeleteProductsFromCloud,
-  mapRowToProduct,
-} from './services/supabase';
+  apiGetProducts,
+  apiCreateProduct,
+  apiUpdateProduct,
+  apiDeleteProduct,
+  apiBulkDeleteProducts,
+  apiSeedInitialProducts,
+} from './services/api';
 import { exportProductsToExcel, importProductsFromExcel } from './utils/excel';
 import { Sidebar } from './components/layout/Sidebar';
 import type { NavTab } from './components/layout/Sidebar';
@@ -22,7 +22,6 @@ import { ProductListView } from './components/products/ProductListView';
 import { ProductFormModal } from './components/products/ProductFormModal';
 import { ProductDetailModal } from './components/products/ProductDetailModal';
 import { DeleteConfirmModal } from './components/products/DeleteConfirmModal';
-import { CloudSettingsModal } from './components/common/CloudSettingsModal';
 import { DashboardView } from './components/dashboard/DashboardView';
 import { BrandsView } from './components/brands/BrandsView';
 import { StatsView } from './components/stats/StatsView';
@@ -34,14 +33,9 @@ export function App() {
   const [currentTab, setCurrentTab] = useState<NavTab>('products');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
-  // Products Data
+  // Products Data - initialize with cache for zero flash of blank screen
   const [products, setProducts] = useState<Product[]>(() => loadProductsFromStorage());
-
-  // Cloud Real-Time connection state
-  const [isCloudConnected, setIsCloudConnected] = useState<boolean>(() =>
-    Boolean(getSupabaseClient())
-  );
-  const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
   // Search & Filter state
   const [searchTerm, setSearchTerm] = useState('');
@@ -81,72 +75,32 @@ export function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // Subscribe to real-time changes when Supabase is connected
+  // Helper to fetch latest products from shared cloud database
+  const loadSharedProducts = async (showToast = false) => {
+    setIsRefreshing(true);
+    try {
+      const cloudProducts = await apiGetProducts();
+      if (cloudProducts && cloudProducts.length > 0) {
+        setProducts(cloudProducts);
+        saveProductsToStorage(cloudProducts);
+        if (showToast) {
+          addToast('success', 'Đã đồng bộ', 'Đã tải dữ liệu mới nhất từ máy chủ chung.');
+        }
+      }
+    } catch (err: any) {
+      console.error('Không thể tải sản phẩm từ máy chủ:', err);
+      if (showToast) {
+        addToast('error', 'Lỗi kết nối', 'Không thể kết nối tới máy chủ chung. Đang dùng dữ liệu trên máy.');
+      }
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Load from cloud database when opening the site
   useEffect(() => {
-    const client = getSupabaseClient();
-    const connected = Boolean(client);
-    setIsCloudConnected(connected);
-
-    if (!client) return;
-
-    // 1. Initial cloud fetch
-    fetchProductsFromCloud()
-      .then((cloudData) => {
-        if (cloudData && cloudData.length > 0) {
-          setProducts(cloudData);
-          saveProductsToStorage(cloudData);
-        }
-      })
-      .catch((err) => {
-        console.error('Error loading products from cloud:', err);
-      });
-
-    // 2. Real-time websocket channel subscription
-    const channel = client
-      .channel('products-realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'products' },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            const newProd = mapRowToProduct(payload.new);
-            setProducts((prev) => {
-              if (prev.some((p) => p.id === newProd.id)) return prev;
-              const next = [newProd, ...prev];
-              saveProductsToStorage(next);
-              return next;
-            });
-            addToast('info', 'Cập nhật từ thiết bị khác', `Sản phẩm "${newProd.name}" vừa được thêm mới.`);
-          } else if (payload.eventType === 'UPDATE') {
-            const updatedProd = mapRowToProduct(payload.new);
-            setProducts((prev) => {
-              const next = prev.map((p) => (p.id === updatedProd.id ? updatedProd : p));
-              saveProductsToStorage(next);
-              return next;
-            });
-            setDetailProduct((current) =>
-              current && current.id === updatedProd.id ? updatedProd : current
-            );
-            addToast('info', 'Đồng bộ Real-Time', `Sản phẩm "${updatedProd.name}" vừa được chỉnh sửa.`);
-          } else if (payload.eventType === 'DELETE') {
-            const deletedId = (payload.old as any).id;
-            if (deletedId) {
-              setProducts((prev) => {
-                const next = prev.filter((p) => p.id !== deletedId);
-                saveProductsToStorage(next);
-                return next;
-              });
-              setSelectedProductIds((prev) => prev.filter((id) => id !== deletedId));
-            }
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      client.removeChannel(channel);
-    };
-  }, [isCloudConnected]);
+    loadSharedProducts(false);
+  }, []);
 
   // Keyboard shortcuts: Ctrl+K, Ctrl+N, Esc
   useEffect(() => {
@@ -173,7 +127,6 @@ export function App() {
         setIsFormModalOpen(false);
         setIsDetailModalOpen(false);
         setIsDeleteModalOpen(false);
-        setIsCloudModalOpen(false);
         setIsMobileSidebarOpen(false);
       }
     };
@@ -181,12 +134,6 @@ export function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
-
-  // Update storage whenever products change
-  const updateProducts = (newProducts: Product[]) => {
-    setProducts(newProducts);
-    saveProductsToStorage(newProducts);
-  };
 
   // Counts for navbar & stats
   const inStockCount = products.filter((p) => getStockStatus(p.quantity) === 'in_stock').length;
@@ -249,8 +196,8 @@ export function App() {
     setIsDeleteModalOpen(true);
   };
 
-  // Save Add or Edit (Persists to local and syncs to cloud)
-  const handleSaveProduct = (
+  // Save Add or Edit (Persists permanently to shared cloud database)
+  const handleSaveProduct = async (
     data: Omit<Product, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }
   ) => {
     const now = new Date().toISOString();
@@ -264,18 +211,30 @@ export function App() {
         updatedAt: now,
       };
 
-      const updated = products.map((p) => (p.id === data.id ? updatedProd : p));
-      updateProducts(updated);
-      addToast('success', 'Đã lưu thay đổi', `Đã cập nhật thông tin sản phẩm "${data.name}".`);
+      // Optimistically update UI
+      const nextProducts = products.map((p) => (p.id === data.id ? updatedProd : p));
+      setProducts(nextProducts);
+      saveProductsToStorage(nextProducts);
 
       if (detailProduct && detailProduct.id === data.id) {
         setDetailProduct(updatedProd);
       }
 
-      // Sync to cloud in real time
-      saveProductToCloud(updatedProd).catch((err) => {
-        console.error('Error saving to cloud:', err);
-      });
+      try {
+        await apiUpdateProduct(data.id, data);
+        addToast(
+          'success',
+          'Đã lưu thành công!',
+          `Đã cập nhật thông tin sản phẩm "${data.name}" lên máy chủ chung. Người khác truy cập sẽ thấy ngay.`
+        );
+      } catch (err: any) {
+        console.error('Lỗi khi lưu lên máy chủ:', err);
+        addToast(
+          'warning',
+          'Lưu cục bộ',
+          'Đã lưu trên thiết bị của bạn nhưng gặp lỗi kết nối máy chủ.'
+        );
+      }
     } else {
       // Adding new product
       const newProd: Product = {
@@ -284,29 +243,39 @@ export function App() {
         createdAt: now,
         updatedAt: now,
       };
-      const updated = [newProd, ...products];
-      updateProducts(updated);
-      addToast('success', 'Đã thêm sản phẩm', `Sản phẩm "${newProd.name}" đã được đưa vào kho.`);
 
-      // Sync to cloud in real time
-      saveProductToCloud(newProd).catch((err) => {
-        console.error('Error saving new product to cloud:', err);
-      });
+      // Optimistically update UI
+      const nextProducts = [newProd, ...products];
+      setProducts(nextProducts);
+      saveProductsToStorage(nextProducts);
+
+      try {
+        await apiCreateProduct(newProd);
+        addToast(
+          'success',
+          'Đã thêm thành công!',
+          `Sản phẩm "${newProd.name}" đã được lưu lên máy chủ chung.`
+        );
+      } catch (err: any) {
+        console.error('Lỗi khi thêm lên máy chủ:', err);
+        addToast(
+          'warning',
+          'Lưu cục bộ',
+          'Đã lưu vào bộ nhớ tạm nhưng gặp lỗi gửi lên máy chủ.'
+        );
+      }
     }
   };
 
   // Confirm Delete (Single or Bulk)
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (bulkProductsToDelete.length > 0) {
       const idsToDelete = new Set(bulkProductsToDelete.map((p) => p.id));
       const idsArray = Array.from(idsToDelete);
-      const updated = products.filter((p) => !idsToDelete.has(p.id));
-      updateProducts(updated);
-      addToast(
-        'warning',
-        'Đã xóa hàng loạt',
-        `Đã xóa thành công ${bulkProductsToDelete.length} sản phẩm khỏi kho.`
-      );
+      const nextProducts = products.filter((p) => !idsToDelete.has(p.id));
+      
+      setProducts(nextProducts);
+      saveProductsToStorage(nextProducts);
       setSelectedProductIds([]);
       setBulkProductsToDelete([]);
       setIsDeleteModalOpen(false);
@@ -316,16 +285,25 @@ export function App() {
         setDetailProduct(null);
       }
 
-      // Sync to cloud
-      bulkDeleteProductsFromCloud(idsArray).catch((err) => {
-        console.error('Error bulk deleting from cloud:', err);
-      });
+      try {
+        await apiBulkDeleteProducts(idsArray);
+        addToast(
+          'warning',
+          'Đã xóa hàng loạt',
+          `Đã xóa vĩnh viễn ${idsArray.length} sản phẩm khỏi máy chủ chung.`
+        );
+      } catch (err: any) {
+        console.error('Lỗi xóa trên máy chủ:', err);
+        addToast('error', 'Lỗi xóa máy chủ', 'Không thể xóa trên máy chủ: ' + err.message);
+      }
     } else if (productToDelete) {
       const id = productToDelete.id;
-      const updated = products.filter((p) => p.id !== id);
-      updateProducts(updated);
+      const name = productToDelete.name;
+      const nextProducts = products.filter((p) => p.id !== id);
+      
+      setProducts(nextProducts);
+      saveProductsToStorage(nextProducts);
       setSelectedProductIds((prev) => prev.filter((item) => item !== id));
-      addToast('warning', 'Đã xóa sản phẩm', `Đã loại bỏ "${productToDelete.name}" khỏi kho.`);
       setIsDeleteModalOpen(false);
       setProductToDelete(null);
 
@@ -334,24 +312,32 @@ export function App() {
         setDetailProduct(null);
       }
 
-      // Sync to cloud
-      deleteProductFromCloud(id).catch((err) => {
-        console.error('Error deleting product from cloud:', err);
-      });
+      try {
+        await apiDeleteProduct(id);
+        addToast('warning', 'Đã xóa sản phẩm', `Đã xóa "${name}" khỏi máy chủ chung.`);
+      } catch (err: any) {
+        console.error('Lỗi xóa trên máy chủ:', err);
+        addToast('error', 'Lỗi xóa máy chủ', 'Không thể xóa trên máy chủ: ' + err.message);
+      }
     }
   };
 
   // Reset Data to sample
-  const handleResetData = () => {
+  const handleResetData = async () => {
     if (
       window.confirm(
         'Bạn có chắc chắn muốn khôi phục lại danh sách sản phẩm mẫu ban đầu của MEDIHEAL & NUMBUZIN không?'
       )
     ) {
-      const defaults = resetProductsToDefault();
-      setProducts(defaults);
-      setSelectedProductIds([]);
-      addToast('info', 'Khôi phục thành công', 'Đã tải lại toàn bộ sản phẩm mẫu ban đầu.');
+      try {
+        await apiSeedInitialProducts();
+        const defaults = resetProductsToDefault();
+        setProducts(defaults);
+        setSelectedProductIds([]);
+        addToast('info', 'Khôi phục thành công', 'Đã tải lại toàn bộ sản phẩm mẫu ban đầu lên máy chủ.');
+      } catch (err) {
+        console.error(err);
+      }
     }
   };
 
@@ -390,12 +376,18 @@ export function App() {
       }
 
       const updated = [...importedProducts, ...products];
-      updateProducts(updated);
+      setProducts(updated);
+      saveProductsToStorage(updated);
       addToast(
         'success',
         'Nhập Excel thành công!',
-        `Đã nạp thêm ${importedProducts.length} sản phẩm vào kho của bạn.`
+        `Đã nạp thêm ${importedProducts.length} sản phẩm vào kho.`
       );
+
+      // Save new products to cloud
+      for (const p of importedProducts) {
+        apiCreateProduct(p).catch(console.error);
+      }
     } catch (err: any) {
       console.error(err);
       addToast('error', 'Lỗi nhập file', err.message || 'Không thể đọc file Excel/CSV này.');
@@ -437,8 +429,8 @@ export function App() {
         <Navbar
           onToggleMobileMenu={() => setIsMobileSidebarOpen(true)}
           onResetData={handleResetData}
-          onOpenCloudSettings={() => setIsCloudModalOpen(true)}
-          isCloudConnected={isCloudConnected}
+          onRefreshData={() => loadSharedProducts(true)}
+          isRefreshing={isRefreshing}
           totalProducts={products.length}
           inStockCount={inStockCount}
           lowStockCount={lowStockCount}
@@ -532,16 +524,6 @@ export function App() {
           setBulkProductsToDelete([]);
         }}
         onConfirm={handleConfirmDelete}
-      />
-
-      {/* Modal: Cấu hình kết nối Cloud Real-Time (Supabase) */}
-      <CloudSettingsModal
-        isOpen={isCloudModalOpen}
-        onClose={() => setIsCloudModalOpen(false)}
-        isCloudConnected={isCloudConnected}
-        onConfigChanged={() => setIsCloudConnected(Boolean(getSupabaseClient()))}
-        products={products}
-        onNotify={addToast}
       />
     </div>
   );
