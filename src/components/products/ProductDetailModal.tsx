@@ -83,21 +83,29 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           </div>
 
           {/* Quick Price Card */}
-          <div className="grid grid-cols-2 gap-3 p-4 rounded-xl bg-gradient-to-r from-brand-50 to-sky-50 border border-brand-100">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 rounded-xl bg-gradient-to-r from-brand-50 to-sky-50 border border-brand-100">
             <div>
               <span className="text-[11px] font-semibold text-brand-800 uppercase tracking-wider block">
                 Giá bán khách hỏi
               </span>
-              <span className="text-2xl font-black text-brand-700 tracking-tight">
+              <span className="text-xl sm:text-2xl font-black text-brand-700 tracking-tight">
                 {formatVND(product.salePrice)}
               </span>
             </div>
-            <div className="text-right">
+            <div className="sm:text-center">
               <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
                 Giá gốc (won)
               </span>
-              <span className="text-xl font-bold text-slate-700 font-mono">
+              <span className="text-lg sm:text-xl font-bold text-slate-700 font-mono">
                 {formatWon(product.originalPriceWon)}
+              </span>
+            </div>
+            <div className="sm:text-right">
+              <span className="text-[11px] font-semibold text-amber-700 uppercase tracking-wider block">
+                Tiền thuế 8% (won)
+              </span>
+              <span className="text-lg sm:text-xl font-bold text-amber-800 font-mono">
+                {formatWon(Math.round((product.originalPriceWon || 0) * 0.08 * 100) / 100)}
               </span>
             </div>
           </div>

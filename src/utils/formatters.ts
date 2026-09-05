@@ -7,7 +7,8 @@ export const formatVND = (amount: number): string => {
 };
 
 export const formatWon = (amount: number): string => {
-  return `${amount} ₩`;
+  const formatted = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 }).format(amount);
+  return `${formatted} ₩`;
 };
 
 export const formatNumber = (num: number): string => {

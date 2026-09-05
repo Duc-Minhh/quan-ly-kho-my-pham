@@ -9,6 +9,7 @@ export interface ExcelRow {
   'Tên sản phẩm'?: string;
   'Công dụng'?: string;
   'Giá gốc (won)'?: number | string;
+  'Tiền thuế (won)'?: number | string;
   'Định lượng'?: string;
   'Số lượng'?: number | string;
   'Giá bán'?: number | string;
@@ -23,6 +24,7 @@ export const exportProductsToExcel = (products: Product[], filename: string = 'd
     'Tên sản phẩm': p.name,
     'Công dụng': p.usage,
     'Giá gốc (won)': p.originalPriceWon,
+    'Tiền thuế (won)': Math.round((p.originalPriceWon || 0) * 0.08 * 100) / 100,
     'Định lượng': p.unit,
     'Số lượng': p.quantity,
     'Giá bán': p.salePrice,
@@ -39,6 +41,7 @@ export const exportProductsToExcel = (products: Product[], filename: string = 'd
     { wch: 36 }, // Tên SP
     { wch: 45 }, // Công dụng
     { wch: 14 }, // Giá gốc won
+    { wch: 14 }, // Tiền thuế won
     { wch: 14 }, // Định lượng
     { wch: 10 }, // Số lượng
     { wch: 14 }, // Giá bán

@@ -89,11 +89,11 @@ export const ProductTable: React.FC<ProductTableProps> = ({
               <th scope="col" className="py-3.5 px-3 text-right whitespace-nowrap w-24">
                 Giá gốc (won)
               </th>
+              <th scope="col" className="py-3.5 px-3 text-right whitespace-nowrap w-28">
+                Tiền thuế (won)
+              </th>
               <th scope="col" className="py-3.5 px-3 text-center w-24">
                 Định lượng
-              </th>
-              <th scope="col" className="py-3.5 px-3 text-center w-20">
-                Số lượng
               </th>
               <th scope="col" className="py-3.5 px-3 text-right whitespace-nowrap w-28">
                 Giá bán
@@ -192,25 +192,20 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                     </span>
                   </td>
 
+                  {/* Tiền thuế (won) = giá gốc * 8% */}
+                  <td className="py-3 px-3 text-right font-semibold whitespace-nowrap">
+                    <span
+                      className="px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200/60 font-mono text-xs"
+                      title="Tiền thuế 8% tính theo giá gốc (won)"
+                    >
+                      {formatWon(Math.round((prod.originalPriceWon || 0) * 0.08 * 100) / 100)}
+                    </span>
+                  </td>
+
                   {/* Định lượng */}
                   <td className="py-3 px-3 text-center whitespace-nowrap">
                     <span className="text-xs px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200 text-slate-600 font-medium">
                       {prod.unit}
-                    </span>
-                  </td>
-
-                  {/* Số lượng */}
-                  <td className="py-3 px-3 text-center">
-                    <span
-                      className={`font-mono font-bold text-sm ${
-                        prod.quantity === 0
-                          ? 'text-rose-600'
-                          : prod.quantity <= 5
-                          ? 'text-amber-600'
-                          : 'text-slate-800'
-                      }`}
-                    >
-                      {prod.quantity}
                     </span>
                   </td>
 
