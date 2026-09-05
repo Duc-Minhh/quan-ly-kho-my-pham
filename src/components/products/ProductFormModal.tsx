@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { Product } from '../../types/product';
 import { getCosmeticIconSvg } from '../../utils/productImages';
+import { formatWon } from '../../utils/formatters';
 import { X, Upload, Sparkles, AlertCircle } from 'lucide-react';
 
 interface ProductFormModalProps {
@@ -26,7 +27,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const [usage, setUsage] = useState('');
   const [originalPriceWon, setOriginalPriceWon] = useState<number | ''>(10);
   const [unit, setUnit] = useState('Hộp');
-  const [quantity, setQuantity] = useState<number | ''>(10);
+  const [status, setStatus] = useState<'in_stock' | 'out_of_stock'>('in_stock');
   const [salePrice, setSalePrice] = useState<number | ''>(45000);
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
@@ -43,7 +44,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       setUsage(initialData.usage);
       setOriginalPriceWon(initialData.originalPriceWon);
       setUnit(initialData.unit);
-      setQuantity(initialData.quantity);
+      setStatus(initialData.status ? initialData.status : (initialData.quantity > 0 ? 'in_stock' : 'out_of_stock'));
       setSalePrice(initialData.salePrice);
       setNote(initialData.note || '');
       setError('');
@@ -56,7 +57,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       setUsage('');
       setOriginalPriceWon(10);
       setUnit('Hộp');
-      setQuantity(10);
+      setStatus('in_stock');
       setSalePrice(45000);
       setNote('');
       setImage(getCosmeticIconSvg('MEDIHEAL', 'Mặt nạ', 'Mặt nạ'));
@@ -97,10 +98,6 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       setError('Vui lòng nhập thương hiệu.');
       return;
     }
-    if (quantity === '' || Number(quantity) < 0) {
-      setError('Số lượng không được âm.');
-      return;
-    }
     if (salePrice === '' || Number(salePrice) < 0) {
       setError('Giá bán không được âm.');
       return;
@@ -119,7 +116,8 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       usage: usage.trim(),
       originalPriceWon: Number(originalPriceWon) || 0,
       unit: unit.trim() || 'Cái',
-      quantity: Number(quantity) || 0,
+      status,
+      quantity: status === 'in_stock' ? (initialData?.quantity && initialData.quantity > 0 ? initialData.quantity : 10) : 0,
       salePrice: Number(salePrice) || 0,
       note: note.trim(),
     });
@@ -306,6 +304,11 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 placeholder="VD: 10"
                 className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 font-mono"
               />
+              {originalPriceWon !== '' && Number(originalPriceWon) > 0 && (
+                <span className="text-[10px] text-amber-700 font-semibold mt-0.5 block">
+                  Thuế 8%: {formatWon(Math.round(Number(originalPriceWon) * 0.08 * 100) / 100)}
+                </span>
+              )}
             </div>
 
             <div>
@@ -323,20 +326,20 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Số lượng kho <span className="text-rose-500">*</span>
+                Trạng thái hàng
               </label>
-              <input
-                type="number"
-                min="0"
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
-                placeholder="VD: 20"
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
-                required
-              />
-              <span className="text-[10px] text-slate-400 mt-0.5 block">
-                {Number(quantity) === 0 ? '🔴 Hết' : Number(quantity) <= 5 ? '🟡 Sắp hết' : '🟢 Còn'}
-              </span>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as 'in_stock' | 'out_of_stock')}
+                className={`w-full px-3 py-2 bg-white border rounded-xl text-xs sm:text-sm font-bold focus:outline-none focus:ring-2 cursor-pointer transition-colors ${
+                  status === 'in_stock'
+                    ? 'border-emerald-300 text-emerald-700 focus:ring-emerald-400'
+                    : 'border-rose-300 text-rose-700 focus:ring-rose-400'
+                }`}
+              >
+                <option value="in_stock">🟢 Còn hàng</option>
+                <option value="out_of_stock">🔴 Hết hàng</option>
+              </select>
             </div>
 
             <div>

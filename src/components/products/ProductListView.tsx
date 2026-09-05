@@ -29,6 +29,7 @@ interface ProductListViewProps {
   onSelectProduct: (product: Product) => void;
   onEditProduct: (product: Product) => void;
   onDeleteProduct: (product: Product) => void;
+  onUpdateStatus?: (product: Product, newStatus: 'in_stock' | 'out_of_stock') => void;
   selectedProductIds: string[];
   onToggleSelect: (productId: string) => void;
   onToggleSelectAll: () => void;
@@ -54,6 +55,7 @@ export const ProductListView: React.FC<ProductListViewProps> = ({
   onSelectProduct,
   onEditProduct,
   onDeleteProduct,
+  onUpdateStatus,
   selectedProductIds,
   onToggleSelect,
   onToggleSelectAll,
@@ -98,7 +100,7 @@ export const ProductListView: React.FC<ProductListViewProps> = ({
       const matchBrand = selectedBrand === 'ALL' || p.brand === selectedBrand;
 
       // Status matching
-      const prodStatus = getStockStatus(p.quantity);
+      const prodStatus = getStockStatus(p);
       const matchStatus = selectedStatus === 'ALL' || prodStatus === selectedStatus;
 
       return matchSearch && matchCategory && matchBrand && matchStatus;
@@ -243,9 +245,8 @@ export const ProductListView: React.FC<ProductListViewProps> = ({
           className="py-1.5 px-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer"
         >
           <option value="ALL">Tất cả trạng thái</option>
-          <option value="in_stock">🟢 Còn hàng (&gt; 5)</option>
-          <option value="low_stock">🟡 Sắp hết (1 - 5)</option>
-          <option value="out_of_stock">🔴 Hết hàng (0)</option>
+          <option value="in_stock">🟢 Còn hàng</option>
+          <option value="out_of_stock">🔴 Hết hàng</option>
         </select>
 
         {/* Reset Filter button */}
@@ -303,6 +304,7 @@ export const ProductListView: React.FC<ProductListViewProps> = ({
         onSelectProduct={onSelectProduct}
         onEditProduct={onEditProduct}
         onDeleteProduct={onDeleteProduct}
+        onUpdateStatus={onUpdateStatus}
         searchTerm={searchTerm}
       />
     </div>

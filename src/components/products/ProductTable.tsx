@@ -13,6 +13,7 @@ interface ProductTableProps {
   onSelectProduct: (product: Product) => void;
   onEditProduct: (product: Product) => void;
   onDeleteProduct: (product: Product) => void;
+  onUpdateStatus?: (product: Product, newStatus: 'in_stock' | 'out_of_stock') => void;
   searchTerm?: string;
 }
 
@@ -24,6 +25,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({
   onSelectProduct,
   onEditProduct,
   onDeleteProduct,
+  onUpdateStatus,
   searchTerm,
 }) => {
   if (products.length === 0) {
@@ -214,14 +216,36 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                     {formatVND(prod.salePrice)}
                   </td>
 
-                  {/* Trạng thái (Badge: 🟢 Còn hàng, 🟡 Sắp hết, 🔴 Hết hàng) */}
-                  <td className="py-3 px-3 text-center whitespace-nowrap">
-                    <span
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${statusInfo.badgeClass}`}
-                    >
-                      <span className={`w-2 h-2 rounded-full ${statusInfo.dotClass}`} />
-                      <span>{statusInfo.label}</span>
-                    </span>
+                  {/* Trạng thái (Tự chọn: 🟢 Còn hàng, 🔴 Hết hàng) */}
+                  <td
+                    className="py-2.5 px-3 text-center whitespace-nowrap"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {onUpdateStatus ? (
+                      <select
+                        value={prod.status ? prod.status : (prod.quantity > 0 ? 'in_stock' : 'out_of_stock')}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          onUpdateStatus(prod, e.target.value as 'in_stock' | 'out_of_stock');
+                        }}
+                        className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full border cursor-pointer focus:outline-none focus:ring-2 transition-all shadow-2xs font-sans ${
+                          (prod.status ? prod.status === 'in_stock' : prod.quantity > 0)
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:border-emerald-400 focus:ring-emerald-400'
+                            : 'bg-rose-50 text-rose-700 border-rose-300 hover:border-rose-400 focus:ring-rose-400'
+                        }`}
+                        title="Bấm để chuyển đổi Còn hàng / Hết hàng"
+                      >
+                        <option value="in_stock">🟢 Còn hàng</option>
+                        <option value="out_of_stock">🔴 Hết hàng</option>
+                      </select>
+                    ) : (
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${statusInfo.badgeClass}`}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${statusInfo.dotClass}`} />
+                        <span>{statusInfo.label}</span>
+                      </span>
+                    )}
                   </td>
 
                   {/* Thao tác: Sửa, Xóa */}

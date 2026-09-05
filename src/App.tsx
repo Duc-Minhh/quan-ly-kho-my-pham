@@ -267,6 +267,38 @@ export function App() {
     }
   };
 
+  // Quick status update for product directly from list table
+  const handleUpdateProductStatus = async (
+    product: Product,
+    newStatus: 'in_stock' | 'out_of_stock'
+  ) => {
+    const updatedProd: Product = {
+      ...product,
+      status: newStatus,
+      quantity: newStatus === 'in_stock' ? (product.quantity > 0 ? product.quantity : 10) : 0,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const nextProducts = products.map((p) => (p.id === product.id ? updatedProd : p));
+    setProducts(nextProducts);
+    saveProductsToStorage(nextProducts);
+
+    if (detailProduct && detailProduct.id === product.id) {
+      setDetailProduct(updatedProd);
+    }
+
+    try {
+      await apiUpdateProduct(product.id, updatedProd);
+      addToast(
+        'success',
+        'Cập nhật trạng thái',
+        `"${product.name}" đã được chuyển sang ${newStatus === 'in_stock' ? 'Còn hàng' : 'Hết hàng'}.`
+      );
+    } catch (err: any) {
+      console.error('Lỗi khi cập nhật trạng thái lên máy chủ:', err);
+    }
+  };
+
   // Confirm Delete (Single or Bulk)
   const handleConfirmDelete = async () => {
     if (bulkProductsToDelete.length > 0) {
@@ -455,6 +487,7 @@ export function App() {
               onSelectProduct={handleOpenDetailModal}
               onEditProduct={handleOpenEditModal}
               onDeleteProduct={handleOpenDeleteModal}
+              onUpdateStatus={handleUpdateProductStatus}
               selectedProductIds={selectedProductIds}
               onToggleSelect={handleToggleSelect}
               onToggleSelectAll={() => handleToggleSelectAll(products)}

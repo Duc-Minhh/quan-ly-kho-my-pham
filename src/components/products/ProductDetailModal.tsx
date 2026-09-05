@@ -77,7 +77,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               <div className="flex items-center justify-center sm:justify-start gap-4 pt-1 text-xs text-slate-500">
                 <span>Định lượng: <strong className="text-slate-700">{product.unit}</strong></span>
                 <span>•</span>
-                <span>Số lượng trong kho: <strong className="text-brand-700 text-sm">{product.quantity}</strong> cái/hộp</span>
+                <span>Trạng thái: <strong className={(product.status ? product.status === 'in_stock' : product.quantity > 0) ? 'text-emerald-700' : 'text-rose-700'}>{(product.status ? product.status === 'in_stock' : product.quantity > 0) ? '🟢 Còn hàng' : '🔴 Hết hàng'}</strong></span>
               </div>
             </div>
           </div>
@@ -134,8 +134,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               <span className="text-slate-500 flex items-center gap-1.5">
                 <Layers className="w-3.5 h-3.5 text-slate-400" /> Tình trạng kho:
               </span>
-              <strong className={product.quantity > 5 ? 'text-emerald-700' : product.quantity > 0 ? 'text-amber-700' : 'text-rose-700'}>
-                {product.quantity > 5 ? `Còn nhiều (${product.quantity})` : product.quantity > 0 ? `Sắp hết (${product.quantity})` : 'Hết hàng (0)'}
+              <strong className={(product.status ? product.status === 'in_stock' : product.quantity > 0) ? 'text-emerald-700' : 'text-rose-700'}>
+                {(product.status ? product.status === 'in_stock' : product.quantity > 0) ? '🟢 Còn hàng' : '🔴 Hết hàng'}
               </strong>
             </div>
           </div>
