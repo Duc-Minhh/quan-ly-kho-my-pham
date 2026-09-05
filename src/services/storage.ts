@@ -6,18 +6,19 @@ const STORAGE_KEY = 'my_cosmetics_products_v1';
 export const loadProductsFromStorage = (): Product[] => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
+    // Only load initial sample products on the very first visit (when key does not exist)
+    if (raw === null) {
       saveProductsToStorage(INITIAL_PRODUCTS);
       return INITIAL_PRODUCTS;
     }
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length > 0) {
+    if (Array.isArray(parsed)) {
       return parsed;
     }
-    return INITIAL_PRODUCTS;
+    return [];
   } catch (err) {
     console.error('Failed to load products from localStorage:', err);
-    return INITIAL_PRODUCTS;
+    return [];
   }
 };
 
