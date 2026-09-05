@@ -1,21 +1,31 @@
 import { createClient } from '@supabase/supabase-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Product } from '../types/product';
+import { INITIAL_PRODUCTS } from '../data/initialProducts';
 
 const SUPABASE_CONFIG_KEY = 'my_cosmetics_supabase_config_v1';
+
+// Default Supabase project credentials (fallback for all visitors)
+export const DEFAULT_SUPABASE_URL = 'https://hwwdtlmekefpakreiirp.supabase.co';
+export const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_iOZuh3s6VMw1dUrgWFcOUQ_jc0n-G_g';
 
 export interface SupabaseConfig {
   url: string;
   anonKey: string;
 }
 
-// Load config from env or localStorage
+export const cleanSupabaseUrl = (url: string): string => {
+  if (!url) return '';
+  return url.trim().replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
+};
+
+// Load config from env or localStorage or defaults
 export const getSupabaseConfig = (): SupabaseConfig => {
   const envUrl = import.meta.env.VITE_SUPABASE_URL;
   const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
   if (envUrl && envKey) {
-    return { url: envUrl, anonKey: envKey };
+    return { url: cleanSupabaseUrl(envUrl), anonKey: envKey.trim() };
   }
 
   try {
@@ -23,19 +33,23 @@ export const getSupabaseConfig = (): SupabaseConfig => {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed.url && parsed.anonKey) {
-        return parsed;
+        return { url: cleanSupabaseUrl(parsed.url), anonKey: parsed.anonKey.trim() };
       }
     }
   } catch (err) {
     console.error('Error reading Supabase config from localStorage:', err);
   }
 
-  return { url: '', anonKey: '' };
+  // Fallback to project default so any user opening the link connects immediately!
+  return { url: DEFAULT_SUPABASE_URL, anonKey: DEFAULT_SUPABASE_ANON_KEY };
 };
 
 export const saveSupabaseConfig = (config: SupabaseConfig): void => {
   try {
-    localStorage.setItem(SUPABASE_CONFIG_KEY, JSON.stringify(config));
+    localStorage.setItem(
+      SUPABASE_CONFIG_KEY,
+      JSON.stringify({ url: cleanSupabaseUrl(config.url), anonKey: config.anonKey.trim() })
+    );
   } catch (err) {
     console.error('Error saving Supabase config to localStorage:', err);
   }
@@ -121,6 +135,18 @@ export const fetchProductsFromCloud = async (): Promise<Product[] | null> => {
     throw error;
   }
 
+  // If table in cloud is completely empty, auto-seed with initial 18 products
+  if (data && data.length === 0) {
+    try {
+      const rows = INITIAL_PRODUCTS.map(mapProductToRow);
+      await client.from('products').upsert(rows);
+      return INITIAL_PRODUCTS;
+    } catch (seedErr) {
+      console.error('Failed to seed cloud database:', seedErr);
+      return [];
+    }
+  }
+
   return (data || []).map(mapRowToProduct);
 };
 
@@ -193,12 +219,12 @@ create table if not exists public.products (
   updated_at timestamptz default now()
 );
 
--- 2. Tắt RLS hoặc cho phép truy cập đọc/ghi công khai (dành cho app nội bộ)
+-- 2. Cho phép đọc/ghi công khai
 alter table public.products enable row level security;
 
 create policy "Allow all access to products" on public.products
   for all using (true) with check (true);
 
--- 3. Bật tính năng Real-time đồng bộ tức thì cho bảng products
+-- 3. Kích hoạt tính năng Real-time đồng bộ tức thì
 alter publication supabase_realtime add table public.products;
 `;
